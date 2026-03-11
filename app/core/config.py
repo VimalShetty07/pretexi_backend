@@ -1,8 +1,10 @@
-from pydantic_settings import BaseSettings
+from pydantic_settings import BaseSettings, SettingsConfigDict
 from functools import lru_cache
 
 
 class Settings(BaseSettings):
+    model_config = SettingsConfigDict(env_file=".env", extra="ignore")
+
     APP_NAME: str = "Protexi API"
     DEBUG: bool = True
 
@@ -25,9 +27,12 @@ class Settings(BaseSettings):
 
     # File uploads
     UPLOAD_DIR: str = "./uploads"
-
-    class Config:
-        env_file = ".env"
+    STORAGE_PROVIDER: str = "local"  # local | s3
+    AWS_ACCESS_KEY_ID: str | None = None
+    AWS_SECRET_ACCESS_KEY: str | None = None
+    AWS_REGION: str | None = None
+    S3_BUCKET: str | None = None
+    S3_PREFIX: str = "uploads/"
 
 
 @lru_cache()

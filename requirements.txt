@@ -10,3 +10,4 @@ passlib[bcrypt]
 python-multipart
 python-dotenv
 openpyxl
+boto3
