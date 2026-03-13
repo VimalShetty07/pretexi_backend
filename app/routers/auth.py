@@ -12,6 +12,11 @@ from app.routers.deps import get_current_user, require_admin
 router = APIRouter(prefix="/auth", tags=["auth"])
 
 
+def _require_user_admin(user: User) -> None:
+    if user.role not in (UserRole.SUPER_ADMIN, UserRole.TENANT_ADMIN):
+        raise HTTPException(status_code=403, detail="Only tenant or super admins can manage users")
+
+
 @router.post("/register", response_model=TokenResponse, status_code=status.HTTP_201_CREATED)
 def register(payload: RegisterRequest, db: Session = Depends(get_db)):
     if db.query(User).filter(User.email == payload.email).first():
@@ -80,20 +85,31 @@ def me(current_user: User = Depends(get_current_user)):
 # ── User management (admin only) ──────────────────────────
 
 @router.get("/users", response_model=list[UserOut])
-def list_users(db: Session = Depends(get_db), admin: User = Depends(require_admin)):
-    return db.query(User).filter(User.organisation_id == admin.organisation_id).all()
+def list_users(db: Session = Depends(get_db), admin: User = Depends(get_current_user)):
+    _require_user_admin(admin)
+    query = db.query(User).filter(User.organisation_id == admin.organisation_id)
+    if admin.role == UserRole.TENANT_ADMIN:
+        query = query.filter(User.role == UserRole.HR_OFFICER)
+    return query.all()
 
 
 @router.post("/users", response_model=UserOut, status_code=status.HTTP_201_CREATED)
-def create_user(payload: UserCreate, db: Session = Depends(get_db), admin: User = Depends(require_admin)):
+def create_user(payload: UserCreate, db: Session = Depends(get_db), admin: User = Depends(get_current_user)):
+    _require_user_admin(admin)
     if db.query(User).filter(User.email == payload.email).first():
         raise HTTPException(status_code=400, detail="Email already registered")
+
+    role_value = payload.role
+    if admin.role == UserRole.TENANT_ADMIN:
+        if payload.role != UserRole.HR_OFFICER.value:
+            raise HTTPException(status_code=403, detail="Tenant admin can only create HR users")
+        role_value = UserRole.HR_OFFICER.value
 
     user = User(
         email=payload.email,
         hashed_password=hash_password(payload.password),
         full_name=payload.full_name,
-        role=payload.role,
+        role=role_value,
         organisation_id=admin.organisation_id,
         worker_id=payload.worker_id,
         access_expires_at=payload.access_expires_at,
@@ -105,10 +121,17 @@ def create_user(payload: UserCreate, db: Session = Depends(get_db), admin: User 
 
 
 @router.patch("/users/{user_id}", response_model=UserOut)
-def update_user(user_id: str, payload: UserUpdate, db: Session = Depends(get_db), admin: User = Depends(require_admin)):
+def update_user(user_id: str, payload: UserUpdate, db: Session = Depends(get_db), admin: User = Depends(get_current_user)):
+    _require_user_admin(admin)
     user = db.query(User).filter(User.id == user_id, User.organisation_id == admin.organisation_id).first()
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
+
+    if admin.role == UserRole.TENANT_ADMIN:
+        if user.role != UserRole.HR_OFFICER:
+            raise HTTPException(status_code=403, detail="Tenant admin can only update HR users")
+        if payload.role and payload.role != UserRole.HR_OFFICER.value:
+            raise HTTPException(status_code=403, detail="Tenant admin cannot change HR role")
 
     for key, value in payload.model_dump(exclude_unset=True).items():
         setattr(user, key, value)
