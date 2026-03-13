@@ -24,6 +24,9 @@ class Settings(BaseSettings):
     MOCK_AUTH: bool = False
     # Default user email when mock auth is used and no X-Mock-User-Email header is sent (optional)
     MOCK_USER_EMAIL: str | None = None
+    PLATFORM_OWNER_EMAIL: str = "owner@protexi.com"
+    PLATFORM_OWNER_PASSWORD: str | None = None
+    PLATFORM_OWNER_NAME: str = "Platform Owner"
 
     # File uploads
     UPLOAD_DIR: str = "./uploads"
@@ -33,6 +36,16 @@ class Settings(BaseSettings):
     AWS_REGION: str | None = None
     S3_BUCKET: str | None = None
     S3_PREFIX: str = "uploads/"
+
+    # Multi-tenant / billing
+    APP_BASE_URL: str | None = None
+    FRONTEND_BASE_URL: str | None = None
+    API_BASE_URL: str | None = None
+    PAYMENT_PROVIDER: str = "manual"
+    STRIPE_SECRET_KEY: str | None = None
+    STRIPE_WEBHOOK_SECRET: str | None = None
+    STRIPE_PRICE_STARTER_MONTHLY: str | None = None
+    STRIPE_PRICE_GROWTH_MONTHLY: str | None = None
 
 
 @lru_cache()

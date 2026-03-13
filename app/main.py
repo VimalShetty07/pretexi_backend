@@ -1,7 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.core.config import get_settings
-from app.routers import auth, workers, dashboard, alerts, reports, portal, documents, leave, calendar, bgverify
+from app.routers import auth, workers, dashboard, alerts, reports, portal, documents, leave, calendar, bgverify, platform, saas
 
 settings = get_settings()
 
@@ -38,6 +38,8 @@ app.include_router(documents.router, prefix="/api")
 app.include_router(leave.router, prefix="/api")
 app.include_router(calendar.router, prefix="/api")
 app.include_router(bgverify.router, prefix="/api")
+app.include_router(platform.router, prefix="/api")
+app.include_router(saas.router, prefix="/api")
 
 # Employee portal routes
 app.include_router(portal.router, prefix="/api")

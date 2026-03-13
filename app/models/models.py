@@ -23,6 +23,10 @@ def _uuid() -> str:
 
 class UserRole(str, enum.Enum):
     SUPER_ADMIN = "super_admin"
+    PLATFORM_OWNER = "platform_owner"
+    TENANT_ADMIN = "tenant_admin"
+    TENANT_STAFF = "tenant_staff"
+    TENANT_EMPLOYEE = "tenant_employee"
     COMPLIANCE_MANAGER = "compliance_manager"
     HR_OFFICER = "hr_officer"
     PAYROLL_OFFICER = "payroll_officer"
@@ -154,6 +158,14 @@ class LeaveStatus(str, enum.Enum):
     CANCELLED = "cancelled"
 
 
+class SubscriptionStatus(str, enum.Enum):
+    TRIALING = "trialing"
+    ACTIVE = "active"
+    PAST_DUE = "past_due"
+    CANCELED = "canceled"
+    EXPIRED = "expired"
+
+
 # ═══════════════════════════════════════════════════════════
 #  ORGANISATION
 # ═══════════════════════════════════════════════════════════
@@ -164,6 +176,10 @@ class Organisation(Base):
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
     name: Mapped[str] = mapped_column(String(255))
     licence_number: Mapped[str] = mapped_column(String(50), unique=True)
+    slug: Mapped[str | None] = mapped_column(String(120), unique=True, nullable=True, index=True)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    portal_plan: Mapped[str] = mapped_column(String(50), default="free")
+    portal_expires_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     rating: Mapped[LicenceRating] = mapped_column(SAEnum(LicenceRating), default=LicenceRating.A)
     address: Mapped[str | None] = mapped_column(Text, nullable=True)
     sector: Mapped[str | None] = mapped_column(String(255), nullable=True)
@@ -199,6 +215,8 @@ class Organisation(Base):
     workers: Mapped[list["Worker"]] = relationship(back_populates="organisation", cascade="all, delete-orphan")
     key_personnel: Mapped[list["KeyPersonnel"]] = relationship(back_populates="organisation", cascade="all, delete-orphan")
     org_changes: Mapped[list["OrgChangeLog"]] = relationship(back_populates="organisation", cascade="all, delete-orphan")
+    subscriptions: Mapped[list["Subscription"]] = relationship(back_populates="organisation", cascade="all, delete-orphan")
+    tenant_invitations: Mapped[list["TenantInvitation"]] = relationship(back_populates="organisation", cascade="all, delete-orphan")
 
 
 # ═══════════════════════════════════════════════════════════
@@ -264,6 +282,7 @@ class User(Base):
 
     # Security
     mfa_enabled: Mapped[bool] = mapped_column(Boolean, default=False)
+    must_reset_password: Mapped[bool] = mapped_column(Boolean, default=False)
     last_login: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     last_login_ip: Mapped[str | None] = mapped_column(String(45), nullable=True)
 
@@ -272,6 +291,67 @@ class User(Base):
 
     organisation: Mapped["Organisation"] = relationship(back_populates="users")
     worker: Mapped["Worker | None"] = relationship(back_populates="portal_user", foreign_keys=[worker_id])
+
+
+class Subscription(Base):
+    __tablename__ = "subscriptions"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    organisation_id: Mapped[str] = mapped_column(String(36), ForeignKey("organisations.id"), index=True)
+    provider: Mapped[str] = mapped_column(String(32), default="stripe")
+    provider_customer_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    provider_subscription_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    plan_code: Mapped[str] = mapped_column(String(100))
+    status: Mapped[SubscriptionStatus] = mapped_column(
+        SAEnum(SubscriptionStatus, native_enum=False),
+        default=SubscriptionStatus.ACTIVE,
+    )
+    billing_interval: Mapped[str] = mapped_column(String(20), default="month")
+    amount: Mapped[float] = mapped_column(Float, default=0)
+    currency: Mapped[str] = mapped_column(String(10), default="GBP")
+    current_period_start: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    current_period_end: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    cancel_at_period_end: Mapped[bool] = mapped_column(Boolean, default=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow, onupdate=_utcnow)
+
+    organisation: Mapped["Organisation"] = relationship(back_populates="subscriptions")
+    events: Mapped[list["SubscriptionEvent"]] = relationship(back_populates="subscription", cascade="all, delete-orphan")
+
+
+class SubscriptionEvent(Base):
+    __tablename__ = "subscription_events"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    subscription_id: Mapped[str | None] = mapped_column(String(36), ForeignKey("subscriptions.id"), nullable=True)
+    provider_event_id: Mapped[str] = mapped_column(String(255), unique=True, index=True)
+    event_type: Mapped[str] = mapped_column(String(100))
+    payload_json: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    processed_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    status: Mapped[str] = mapped_column(String(20), default="received")
+    error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow)
+
+    subscription: Mapped["Subscription | None"] = relationship(back_populates="events")
+
+
+class TenantInvitation(Base):
+    __tablename__ = "tenant_invitations"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    organisation_id: Mapped[str] = mapped_column(String(36), ForeignKey("organisations.id"), index=True)
+    email: Mapped[str] = mapped_column(String(255), index=True)
+    role: Mapped[UserRole] = mapped_column(
+        SAEnum(UserRole, native_enum=False),
+        default=UserRole.TENANT_ADMIN,
+    )
+    token_hash: Mapped[str] = mapped_column(String(255))
+    expires_at: Mapped[datetime] = mapped_column(DateTime)
+    accepted_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    created_by_user_id: Mapped[str | None] = mapped_column(String(36), ForeignKey("users.id"), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow)
+
+    organisation: Mapped["Organisation"] = relationship(back_populates="tenant_invitations")
 
 
 # ═══════════════════════════════════════════════════════════

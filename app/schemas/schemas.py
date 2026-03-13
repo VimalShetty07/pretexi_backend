@@ -1,4 +1,4 @@
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from datetime import datetime
 
 
@@ -23,6 +23,51 @@ class TokenResponse(BaseModel):
     access_token: str
     token_type: str = "bearer"
     user: "UserOut"
+
+
+class PublicPlanOut(BaseModel):
+    code: str
+    name: str
+    amount: float
+    currency: str
+    billing_interval: str
+    features: list[str]
+
+
+class CheckoutSessionRequest(BaseModel):
+    plan_code: str
+    company_name: str
+    admin_email: str
+    admin_name: str
+
+
+class CheckoutSessionResponse(BaseModel):
+    checkout_url: str
+    session_id: str
+
+
+class BillingWebhookRequest(BaseModel):
+    provider_event_id: str
+    event_type: str
+    company_name: str
+    company_slug: str
+    admin_email: str
+    admin_name: str
+    plan_code: str = "starter_monthly"
+    status: str = "active"
+    billing_interval: str = "month"
+    amount: float = 0
+    currency: str = "GBP"
+    current_period_end: datetime | None = None
+    provider_customer_id: str | None = None
+    provider_subscription_id: str | None = None
+
+
+class PortalBootstrapRequest(BaseModel):
+    token: str
+    email: str
+    password: str
+    full_name: str | None = None
 
 
 # ═══════════════════════════════════════════════════════════
@@ -94,6 +139,57 @@ class OrganisationUpdate(BaseModel):
     portal_show_salary: bool | None = None
     portal_require_edit_approval: bool | None = None
 
+
+class PlatformOrganisationCreate(BaseModel):
+    name: str
+    slug: str
+    admin_email: str
+    admin_name: str
+    admin_password: str
+    plan_code: str = "starter_monthly"
+    portal_expires_at: datetime | None = None
+
+
+class PlatformOrganisationPatch(BaseModel):
+    name: str | None = None
+    slug: str | None = None
+    is_active: bool | None = None
+    portal_plan: str | None = None
+    portal_expires_at: datetime | None = None
+
+
+class PlatformOrganisationSummary(BaseModel):
+    id: str
+    name: str
+    slug: str | None = None
+    is_active: bool
+    portal_plan: str
+    portal_expires_at: datetime | None = None
+    tenant_admin_email: str | None = None
+    subscription_status: str | None = None
+    subscription_current_period_end: datetime | None = None
+
+
+class PlatformOrganisationDetail(BaseModel):
+    id: str
+    name: str
+    licence_number: str
+    slug: str | None = None
+    is_active: bool
+    portal_plan: str
+    portal_expires_at: datetime | None = None
+    admin_users: list[UserOut] = Field(default_factory=list)
+    latest_subscription: dict | None = None
+
+
+class PlatformSubscriptionExpiringOut(BaseModel):
+    organisation_id: str
+    organisation_name: str
+    organisation_slug: str | None = None
+    subscription_id: str
+    status: str
+    plan_code: str
+    current_period_end: datetime | None = None
 
 # ═══════════════════════════════════════════════════════════
 #  KEY PERSONNEL
